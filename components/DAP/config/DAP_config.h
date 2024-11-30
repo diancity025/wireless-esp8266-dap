@@ -17,8 +17,8 @@
  *
  * ----------------------------------------------------------------------
  *
- * $Date:        1. December 2017
- * $Revision:    V2.0.0
+ * $Date:        16. June 2021
+ * $Revision:    V2.1.0
  *
  * Project:      CMSIS-DAP Configuration
  * Title:        DAP_config.h CMSIS-DAP Configuration File (Template)
@@ -31,10 +31,11 @@
  * @brief Adaptation of GPIO and SPI pin
  * @change: 2021-2-10 Support GPIO and SPI
  *          2021-2-18 Try to support SWO
- * @version 0.1
- * @date 2021-2-10
+ *          2024-1-28 Update to CMSIS-DAP v2.1.0
+ * @version 0.3
+ * @date 2024-1-28
  *
- * @copyright Copyright (c) 2021
+ * @copyright Copyright (c) 2021-2024
  *
  */
 
@@ -60,6 +61,7 @@
   #include "esp8266/pin_mux_register.h"
 #elif defined CONFIG_IDF_TARGET_ESP32
 #elif defined CONFIG_IDF_TARGET_ESP32C3
+#elif defined CONFIG_IDF_TARGET_ESP32S3
 #else
   #error unknown hardware
 #endif
@@ -99,6 +101,8 @@ This information includes:
 #elif defined CONFIG_IDF_TARGET_ESP32C3
   #define CPU_CLOCK 16000000
   // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<160MHz
+#elif defined CONFIG_IDF_TARGET_ESP32S3
+  #define CPU_CLOCK 240000000
 #endif
 
 
@@ -149,6 +153,9 @@ This information includes:
 /// This information is returned by the command \ref DAP_Info as part of <b>Capabilities</b>.
 #define SWO_UART SWO_FUNCTION_ENABLE ///< SWO UART:  1 = available, 0 = not available.
 
+/// USART Driver instance number for the UART SWO.
+#define SWO_UART_DRIVER 0 ///< USART Driver instance number (Driver_USART#).
+
 /// Maximum SWO UART Baudrate.
 #define SWO_UART_MAX_BAUDRATE (115200U * 40U) ///< SWO UART Maximum Baudrate in Hz.
 // <<<<<<<<<<<<<<<<<<<<<<<<<<<<< 5MHz
@@ -170,22 +177,47 @@ This information includes:
 #define TIMESTAMP_CLOCK 5000000U ///< Timestamp clock in Hz (0 = timestamps not supported).
 // <<<<<<<<<<<<<<<<<<<<<5MHz
 
+/// Indicate that UART Communication Port is available.
+/// This information is returned by the command \ref DAP_Info as part of <b>Capabilities</b>.
+#define DAP_UART                0               ///< DAP UART:  1 = available, 0 = not available.
+
+/// USART Driver instance number for the UART Communication Port.
+#define DAP_UART_DRIVER         1               ///< USART Driver instance number (Driver_USART#).
+
+/// UART Receive Buffer Size.
+#define DAP_UART_RX_BUFFER_SIZE 1024U           ///< Uart Receive Buffer Size in bytes (must be 2^n).
+
+/// UART Transmit Buffer Size.
+#define DAP_UART_TX_BUFFER_SIZE 1024U           ///< Uart Transmit Buffer Size in bytes (must be 2^n).
+
+/// Indicate that UART Communication via USB COM Port is available.
+/// This information is returned by the command \ref DAP_Info as part of <b>Capabilities</b>.
+#define DAP_UART_USB_COM_PORT   0               ///< USB COM Port:  1 = available, 0 = not available.
+
 /// Debug Unit is connected to fixed Target Device.
 /// The Debug Unit may be part of an evaluation board and always connected to a fixed
-/// known device.  In this case a Device Vendor and Device Name string is stored which
-/// may be used by the debugger or IDE to configure device parameters.
-#define TARGET_DEVICE_FIXED 0 ///< Target Device: 1 = known, 0 = unknown;
+/// known device. In this case a Device Vendor, Device Name, Board Vendor and Board Name strings
+/// are stored and may be used by the debugger or IDE to configure device parameters.
+#define TARGET_FIXED            1               ///< Target: 1 = known, 0 = unknown;
 
-#if TARGET_DEVICE_FIXED
-#define TARGET_DEVICE_VENDOR "ARM"     ///< String indicating the Silicon Vendor
-#define TARGET_DEVICE_NAME "Cortex-M4" ///< String indicating the Target Device
+#define TARGET_DEVICE_VENDOR    ""                 ///< String indicating the Silicon Vendor
+#define TARGET_DEVICE_NAME      ""                 ///< String indicating the Target Device
+#define TARGET_BOARD_VENDOR     "windowsair"       ///< String indicating the Board Vendor
+#define TARGET_BOARD_NAME       "ESP wireless DAP" ///< String indicating the Board Name
+
+#if TARGET_FIXED != 0
+#include <string.h>
+static const char TargetDeviceVendor [] = TARGET_DEVICE_VENDOR;
+static const char TargetDeviceName   [] = TARGET_DEVICE_NAME;
+static const char TargetBoardVendor  [] = TARGET_BOARD_VENDOR;
+static const char TargetBoardName    [] = TARGET_BOARD_NAME;
 #endif
 
 /**
  * @brief Get Vendor ID string.
  *
- * @param str Pointer to buffer to store the string.
- * @return String length.
+ * @param str Pointer to buffer to store the string (max 60 characters).
+ * @return String length. (including terminating NULL character) or 0 (no string).
  */
 __STATIC_INLINE uint8_t DAP_GetVendorString(char *str)
 {
@@ -199,8 +231,8 @@ __STATIC_INLINE uint8_t DAP_GetVendorString(char *str)
 /**
  * @brief Get Product ID string.
  *
- * @param str Pointer to buffer to store the string.
- * @return String length.
+ * @param str Pointer to buffer to store the string (max 60 characters).
+ * @return String length. (including terminating NULL character) or 0 (no string).
  */
 __STATIC_INLINE uint8_t DAP_GetProductString(char *str)
 {
@@ -212,13 +244,100 @@ __STATIC_INLINE uint8_t DAP_GetProductString(char *str)
 /**
  * @brief Get Serial Number string.
  *
- * @param str Pointer to buffer to store the string.
- * @return String length.
+ * @param str Pointer to buffer to store the string (max 60 characters).
+ * @return String length. (including terminating NULL character) or 0 (no string).
  */
 __STATIC_INLINE uint8_t DAP_GetSerNumString(char *str)
 {
   strcpy(str, "1234");
   return (sizeof("1234"));
+}
+
+/**
+ * @brief Get Target Device Vendor string.
+ *
+ * @param str Pointer to buffer to store the string (max 60 characters).
+ * @return String length (including terminating NULL character) or 0 (no string).
+ */
+__STATIC_INLINE uint8_t DAP_GetTargetDeviceVendorString (char *str) {
+#if TARGET_FIXED != 0
+  uint8_t len;
+
+  strcpy(str, TargetDeviceVendor);
+  len = (uint8_t)(strlen(TargetDeviceVendor) + 1U);
+  return (len);
+#else
+  (void)str;
+  return (0U);
+#endif
+}
+
+/**
+ * @brief Get Target Device Name string.
+ *
+ * @param str Pointer to buffer to store the string (max 60 characters).
+ * @return String length (including terminating NULL character) or 0 (no string).
+ */
+__STATIC_INLINE uint8_t DAP_GetTargetDeviceNameString (char *str) {
+#if TARGET_FIXED != 0
+  uint8_t len;
+
+  strcpy(str, TargetDeviceName);
+  len = (uint8_t)(strlen(TargetDeviceName) + 1U);
+  return (len);
+#else
+  (void)str;
+  return (0U);
+#endif
+}
+
+/**
+ * @brief Get Target Board Vendor string.
+ *
+ * @param str Pointer to buffer to store the string (max 60 characters).
+ * @return String length (including terminating NULL character) or 0 (no string).
+ */
+__STATIC_INLINE uint8_t DAP_GetTargetBoardVendorString (char *str) {
+#if TARGET_FIXED != 0
+  uint8_t len;
+
+  strcpy(str, TargetBoardVendor);
+  len = (uint8_t)(strlen(TargetBoardVendor) + 1U);
+  return (len);
+#else
+  (void)str;
+  return (0U);
+#endif
+}
+
+/**
+ * @brief Get Target Board Name string.
+ *
+ * @param str Pointer to buffer to store the string (max 60 characters).
+ * @return String length (including terminating NULL character) or 0 (no string).
+ */
+__STATIC_INLINE uint8_t DAP_GetTargetBoardNameString (char *str) {
+#if TARGET_FIXED != 0
+  uint8_t len;
+
+  strcpy(str, TargetBoardName);
+  len = (uint8_t)(strlen(TargetBoardName) + 1U);
+  return (len);
+#else
+  (void)str;
+  return (0U);
+#endif
+}
+
+/**
+ * @brief Get Product Firmware Version string.
+ *
+ * @param str Pointer to buffer to store the string (max 60 characters).
+ * @return String length (including terminating NULL character) or 0 (no string).
+ */
+__STATIC_INLINE uint8_t DAP_GetProductFirmwareVersionString (char *str) {
+  (void)str;
+  return (0U);
 }
 
 ///@}
@@ -259,7 +378,19 @@ __STATIC_INLINE uint8_t DAP_GetSerNumString(char *str)
 
   #define PIN_LED_CONNECTED _ // won't be used
   #define PIN_LED_RUNNING _ // won't be used
+#elif defined CONFIG_IDF_TARGET_ESP32S3
+  #define PIN_SWDIO _      // SPI MISO
+  #define PIN_SWDIO_MOSI 11 // SPI MOSI
+  #define PIN_SWCLK 12
+  #define PIN_TDO 9        // device TDO -> Host Data Input
+  #define PIN_TDI 10
+  #define PIN_nTRST 14       // optional
+  #define PIN_nRESET 13
 
+  #define PIN_LED_CONNECTED _ // won't be used
+  #define PIN_LED_RUNNING _ // won't be used
+#else
+#error "not a supported target"
 #endif
 
 
@@ -419,6 +550,29 @@ __STATIC_INLINE void PORT_JTAG_SETUP(void)
   GPIO_PULL_UP_ONLY_SET(PIN_nTRST);
   GPIO_PULL_UP_ONLY_SET(PIN_nRESET);
 }
+#elif defined CONFIG_IDF_TARGET_ESP32S3
+__STATIC_INLINE void PORT_JTAG_SETUP(void)
+{
+  // set TCK, TMS pin
+
+  // PIN_TDO output disable
+  gpio_ll_output_disable(&GPIO, PIN_TDO);
+  // PIN_TDO input enable
+  gpio_ll_input_enable(&GPIO, PIN_TDO);
+
+  // PIN_TDI output
+  gpio_ll_output_enable(&GPIO, PIN_TDI);
+  gpio_ll_od_disable(&GPIO, PIN_TDI);
+  gpio_ll_pulldown_dis(&GPIO, PIN_TDI);
+
+  gpio_ll_output_enable(&GPIO, PIN_nTRST);
+  gpio_ll_od_enable(&GPIO, PIN_nTRST);
+  gpio_ll_output_enable(&GPIO, PIN_nRESET);
+  gpio_ll_od_enable(&GPIO, PIN_nRESET);
+
+  GPIO_PULL_UP_ONLY_SET(PIN_nTRST);
+  GPIO_PULL_UP_ONLY_SET(PIN_nRESET);
+}
 #endif
 
 /**
@@ -469,6 +623,11 @@ __STATIC_INLINE void PORT_OFF(void)
 
   // gpio_set_pull_mode(PIN_nTRST, GPIO_PULLUP_ONLY);
   GPIO_PULL_UP_ONLY_SET(PIN_nRESET);
+#elif defined CONFIG_IDF_TARGET_ESP32S3
+  gpio_ll_output_enable(&GPIO, PIN_nRESET);
+  gpio_ll_od_enable(&GPIO, PIN_nRESET);
+  GPIO_PULL_UP_ONLY_SET(PIN_nRESET);
+  gpio_ll_set_level(&GPIO, PIN_nRESET, 1);
 #endif
 }
 
@@ -612,6 +771,10 @@ __STATIC_FORCEINLINE void PIN_SWDIO_OUT_DISABLE(void)
   // Note that the input of esp32c3 is not always connected.
   PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[PIN_SWDIO_MOSI]);
   GPIO.out_w1ts.out_w1ts = (0x1 << PIN_SWDIO_MOSI);
+#elif defined CONFIG_IDF_TARGET_ESP32S3
+  // Note that the input is not always connected.
+  gpio_ll_input_enable(&GPIO, PIN_SWDIO_MOSI);
+  gpio_ll_set_level(&GPIO, PIN_SWDIO_MOSI, 1);
 #endif
 }
 
@@ -660,7 +823,7 @@ __STATIC_FORCEINLINE uint32_t PIN_TDO_IN(void)
   return READ_PERI_REG(RTC_GPIO_IN_DATA) & 0x1;
 #elif defined CONFIG_IDF_TARGET_ESP32
   return ((GPIO.in >> PIN_TDO) & 0x1) ? 1 : 0;
-#elif defined CONFIG_IDF_TARGET_ESP32C3
+#elif defined CONFIG_IDF_TARGET_ESP32C3 || defined CONFIG_IDF_TARGET_ESP32S3
   return GPIO_GET_LEVEL(PIN_TDO);
 #endif
 }
@@ -721,6 +884,8 @@ __STATIC_FORCEINLINE void PIN_nRESET_OUT(uint32_t bit)
     GPIO.enable_w1tc |= (0x01 << PIN_nRESET);
 #elif defined CONFIG_IDF_TARGET_ESP32C3
     GPIO.enable_w1tc.enable_w1tc |= (0x01 << PIN_nRESET);
+#elif defined CONFIG_IDF_TARGET_ESP32S3
+    gpio_ll_output_disable(&GPIO, PIN_nRESET);
 #endif
   }
   else
@@ -730,6 +895,8 @@ __STATIC_FORCEINLINE void PIN_nRESET_OUT(uint32_t bit)
     GPIO.enable_w1ts |= (0x01 << PIN_nRESET);
 #elif defined CONFIG_IDF_TARGET_ESP32C3
     GPIO.enable_w1ts.enable_w1ts |= (0x01 << PIN_nRESET);
+#elif defined CONFIG_IDF_TARGET_ESP32S3
+    gpio_ll_output_enable(&GPIO, PIN_nRESET);
 #endif
     GPIO_SET_LEVEL_LOW(PIN_nRESET);
   }
